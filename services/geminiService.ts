@@ -1,12 +1,6 @@
 import { GoogleGenAI, Type, Chat } from "@google/genai";
 import type { AnalysisPayload } from '../types';
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const analysisSchema = {
   type: Type.OBJECT,
   properties: {
@@ -33,7 +27,13 @@ const analysisSchema = {
 };
 
 
-export const analyzeMedicalReport = async (input: { content: string; mimeType: string }): Promise<AnalysisPayload> => {
+export const analyzeMedicalReport = async (
+  input: { content: string; mimeType: string },
+  apiKey: string
+): Promise<AnalysisPayload> => {
+    if (!apiKey) throw new Error("API Key is required.");
+    const ai = new GoogleGenAI({ apiKey });
+
     const model = 'gemini-2.5-pro';
     const promptInstructions = `
       You are a professional medical report analysis assistant.
@@ -75,9 +75,7 @@ export const analyzeMedicalReport = async (input: { content: string; mimeType: s
 
     const jsonString = response.text.trim();
     try {
-        // The API should return a valid JSON string based on the schema.
         const parsedJson = JSON.parse(jsonString);
-        // Normalize 'null' strings to actual null values for consistency in the app
         parsedJson.parameters = parsedJson.parameters.map((p: any) => ({
             ...p,
             value: p.value === 'null' ? null : p.value,
@@ -92,7 +90,10 @@ export const analyzeMedicalReport = async (input: { content: string; mimeType: s
     }
 };
 
-export const startChatSession = (): Chat => {
+export const startChatSession = (apiKey: string): Chat => {
+    if (!apiKey) throw new Error("API Key is required.");
+    const ai = new GoogleGenAI({ apiKey });
+    
     const model = 'gemini-2.5-flash';
     return ai.chats.create({
         model,
