@@ -1,0 +1,5 @@
+{
+  "name": "Medical Report Analyzer",
+  "description": "An intelligent assistant to extract, structure, and summarize health parameters from medical reports, followed by an interactive chat for general medical questions.",
+  "requestFramePermissions": []
+}
