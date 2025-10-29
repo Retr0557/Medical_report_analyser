@@ -57,7 +57,7 @@ export const ChatComponent: React.FC<ChatProps> = ({ chatHistory, onSendMessage,
             )}
           </div>
         ))}
-        {isLoading && (
+        {isLoading && chatHistory[chatHistory.length - 1]?.role === 'user' && (
             <div className="flex items-start gap-3 animate-fade-in-up">
                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center">
                     <BotIcon />

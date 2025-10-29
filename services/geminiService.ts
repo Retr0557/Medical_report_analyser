@@ -1,4 +1,5 @@
-import { GoogleGenAI, Type, Chat } from "@google/genai";
+// FIX: Import GenerateContentResponse for proper typing of API results.
+import { GoogleGenAI, Type, Chat, GenerateContentResponse } from "@google/genai";
 import type { AnalysisPayload } from '../types';
 
 const analysisSchema = {
@@ -11,9 +12,9 @@ const analysisSchema = {
         type: Type.OBJECT,
         properties: {
           parameter: { type: Type.STRING, description: "Name of the health parameter (e.g., 'Hemoglobin', 'Glucose')." },
-          value: { type: Type.STRING, description: "The measured value. Can be a number or string. Use 'null' as a string if not present." },
-          unit: { type: Type.STRING, description: "The unit of measurement (e.g., 'g/dL', 'mg/dL'). Use 'null' as a string if not present." },
-          referenceRange: { type: Type.STRING, description: "The normal or reference range for the parameter. Use 'null' as a string if not present." }
+          value: { type: Type.STRING, description: "The measured value, formatted as a string (e.g., '14.1', 'Negative'). Use the string 'null' if not present." },
+          unit: { type: Type.STRING, description: "The unit of measurement (e.g., 'g/dL', 'mg/dL'). Use the string 'null' if not present." },
+          referenceRange: { type: Type.STRING, description: "The normal or reference range for the parameter. Use the string 'null' if not present." }
         },
         required: ["parameter", "value", "unit", "referenceRange"]
       }
@@ -26,13 +27,44 @@ const analysisSchema = {
   required: ["parameters", "summary"]
 };
 
+const withRetry = async <T>(fn: () => Promise<T>, retries = 2, delayMs = 1000): Promise<T> => {
+  let lastError: any;
+  for (let i = 0; i < retries + 1; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastError = err;
+      let isRetriable = false;
+      if (err instanceof Error) {
+        try {
+          const errorObj = JSON.parse(err.message);
+          if (errorObj.error && errorObj.error.status === 'UNAVAILABLE') {
+            isRetriable = true;
+          }
+        } catch (e) {
+          if (err.message.includes('503') || err.message.toLowerCase().includes('unavailable')) {
+            isRetriable = true;
+          }
+        }
+      }
+
+      if (isRetriable && i < retries) {
+        const delay = delayMs * Math.pow(2, i); // Exponential backoff
+        console.warn(`API call failed, retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw lastError;
+      }
+    }
+  }
+  throw lastError;
+};
+
 
 export const analyzeMedicalReport = async (
-  input: { content: string; mimeType: string },
-  apiKey: string
+  input: { content: string; mimeType: string }
 ): Promise<AnalysisPayload> => {
-    if (!apiKey) throw new Error("API Key is required.");
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const model = 'gemini-2.5-pro';
     const promptInstructions = `
@@ -41,10 +73,11 @@ export const analyzeMedicalReport = async (
 
       RULES:
       1.  Extract all identifiable health parameters, their values, units, and reference ranges.
-      2.  If any piece of data (value, unit, reference range) for a parameter is unclear or missing, you MUST represent it as the string 'null'.
-      3.  You MUST NEVER give any medical advice or interpretation. Your role is to neutrally extract and summarize the data present in the report.
-      4.  Your entire response MUST be a single valid JSON object that adheres to the provided schema.
-      5.  The summary should be a short text summary based ONLY on the provided report.
+      2.  All extracted data points (parameter, value, unit, referenceRange) MUST be formatted as strings in the JSON output. For example, a numeric value of 12.5 should be returned as the string "12.5".
+      3.  If any piece of data (value, unit, reference range) for a parameter is unclear or missing, you MUST use the literal string 'null'. Do not use the actual null type in the JSON.
+      4.  You MUST NEVER give any medical advice or interpretation. Your role is to neutrally extract and summarize the data present in the report.
+      5.  Your entire response MUST be a single valid JSON object that adheres to the provided schema.
+      6.  The summary should be a short text summary based ONLY on the provided report.
     `;
 
     let requestContents;
@@ -64,7 +97,7 @@ export const analyzeMedicalReport = async (
         requestContents = { parts: [textPart, filePart] };
     }
 
-    const response = await ai.models.generateContent({
+    const apiCall = () => ai.models.generateContent({
         model,
         contents: requestContents,
         config: {
@@ -72,6 +105,9 @@ export const analyzeMedicalReport = async (
             responseSchema: analysisSchema,
         }
     });
+    
+    // FIX: Add explicit type annotation for the response object.
+    const response: GenerateContentResponse = await withRetry(apiCall);
 
     const jsonString = response.text.trim();
     try {
@@ -90,9 +126,8 @@ export const analyzeMedicalReport = async (
     }
 };
 
-export const startChatSession = (apiKey: string, analysisResult: AnalysisPayload): Chat => {
-    if (!apiKey) throw new Error("API Key is required.");
-    const ai = new GoogleGenAI({ apiKey });
+export const startChatSession = (analysisResult: AnalysisPayload): Chat => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const formattedParameters = analysisResult.parameters.map(p => 
         `- ${p.parameter}: ${p.value ?? 'N/A'} ${p.unit ?? ''} (Reference Range: ${p.referenceRange ?? 'N/A'})`

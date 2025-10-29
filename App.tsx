@@ -1,36 +1,20 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import type { Chat } from '@google/genai';
+import React, { useState, useRef } from 'react';
+// FIX: Import Chat and GenerateContentResponse for proper typing.
+import { type Chat, type GenerateContentResponse } from '@google/genai';
 import { Header } from './components/Header';
 import { ReportInput } from './components/ReportInput';
 import { AnalysisResult } from './components/AnalysisResult';
 import { ChatComponent } from './components/Chat';
-import { ApiKeyInput } from './components/ApiKeyInput';
 import { analyzeMedicalReport, startChatSession } from './services/geminiService';
-import type { HealthParameter, ChatMessage, AnalysisPayload } from './types';
+import type { ChatMessage, AnalysisPayload } from './types';
 
 const App: React.FC = () => {
-  const [apiKey, setApiKey] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisPayload | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const chatRef = useRef<Chat | null>(null);
-
-  useEffect(() => {
-    const storedKey = sessionStorage.getItem('GEMINI_API_KEY');
-    if (storedKey) {
-      setApiKey(storedKey);
-    }
-  }, []);
-
-  const handleSetApiKey = (key: string) => {
-    if (key.trim()) {
-      const trimmedKey = key.trim();
-      sessionStorage.setItem('GEMINI_API_KEY', trimmedKey);
-      setApiKey(trimmedKey);
-    }
-  };
 
   const handleReset = () => {
     setAnalysisResult(null);
@@ -39,17 +23,7 @@ const App: React.FC = () => {
     chatRef.current = null;
   };
 
-  const handleChangeApiKey = () => {
-    sessionStorage.removeItem('GEMINI_API_KEY');
-    setApiKey(null);
-    handleReset();
-  };
-
   const handleProcessReport = async (file: { content: string; mimeType: string }) => {
-    if (!apiKey) {
-      setError('API Key is not set. Please refresh and enter your API key.');
-      return;
-    }
     if (!file.content.trim()) {
       setError('Please provide a medical report to analyze.');
       return;
@@ -57,18 +31,39 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await analyzeMedicalReport(file, apiKey);
+      const result = await analyzeMedicalReport(file);
       setAnalysisResult(result);
       
-      chatRef.current = startChatSession(apiKey, result);
+      chatRef.current = startChatSession(result);
       setChatMessages([
         { role: 'model', text: "Your report has been analyzed. You can now ask questions about the extracted parameters (e.g., \"What is Hemoglobin?\").\n\nPlease remember, I cannot provide medical advice. Always consult a healthcare professional for interpretation of your results." }
       ]);
 
     } catch (err) {
       console.error(err);
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-      setError(`Failed to analyze the report. Please check your API key and the console for details. Error: ${errorMessage}`);
+      let errorMessage = 'An unknown error occurred.';
+      if (err instanceof Error) {
+        try {
+          // The Gemini API often returns a JSON string in the error message
+          const errorObj = JSON.parse(err.message);
+          if (errorObj.error) {
+            if (errorObj.error.message) {
+              errorMessage = errorObj.error.message;
+            } else if (errorObj.error.status) {
+              errorMessage = `The API returned an error: ${errorObj.error.status}. Please try again.`;
+            }
+            if (errorObj.error.status === 'UNAVAILABLE') {
+              errorMessage = 'The model is currently overloaded. Our automatic retry failed. Please try again in a few moments.';
+            }
+          } else {
+            errorMessage = err.message;
+          }
+        } catch (e) {
+          // If parsing fails, it's just a regular error message string
+          errorMessage = err.message;
+        }
+      }
+      setError(`Failed to analyze the report. Please check the console for details. Error: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -80,27 +75,44 @@ const App: React.FC = () => {
     const userMessage: ChatMessage = { role: 'user', text: message };
     setChatMessages(prev => [...prev, userMessage]);
     setIsChatLoading(true);
-
+    
     try {
-      const response = await chatRef.current.sendMessage({ message });
-      const modelMessage: ChatMessage = { role: 'model', text: response.text };
-      setChatMessages(prev => [...prev, modelMessage]);
+      const responseStream = await chatRef.current.sendMessageStream({ message });
+
+      let firstChunk = true;
+      let accumulatedText = '';
+
+      for await (const chunk of responseStream) {
+        const chunkText = chunk.text;
+        accumulatedText += chunkText;
+
+        if (firstChunk) {
+          // On the first chunk, create the new model message entry
+          setChatMessages(prev => [...prev, { role: 'model', text: accumulatedText }]);
+          firstChunk = false;
+        } else {
+          // On subsequent chunks, update the last message entry
+          setChatMessages(prev => {
+            const newMessages = [...prev];
+            newMessages[newMessages.length - 1].text = accumulatedText;
+            return newMessages;
+          });
+        }
+      }
     } catch (err) {
       console.error(err);
+      // If an error occurs, add an error message bubble.
       const errorMessage: ChatMessage = { role: 'model', text: 'Sorry, I encountered an error. Please try again.' };
       setChatMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsChatLoading(false);
     }
   };
-  
-  if (!apiKey) {
-    return <ApiKeyInput onSetKey={handleSetApiKey} />;
-  }
+
 
   return (
     <div className="min-h-screen font-sans text-gray-800 dark:text-gray-200">
-      <Header onChangeApiKey={handleChangeApiKey} />
+      <Header />
       <main className="container mx-auto p-4 md:p-8">
         {!analysisResult ? (
           <ReportInput onProcess={handleProcessReport} isLoading={isLoading} error={error} />
