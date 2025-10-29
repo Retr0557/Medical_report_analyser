@@ -41,7 +41,7 @@ export const ChatComponent: React.FC<ChatProps> = ({ chatHistory, onSendMessage,
 
       <div className="h-96 overflow-y-auto p-4 md:p-6 space-y-4">
         {chatHistory.map((msg, index) => (
-          <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+          <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : ''} animate-fade-in-up`}>
             {msg.role === 'model' && (
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center">
                 <BotIcon />
@@ -58,7 +58,7 @@ export const ChatComponent: React.FC<ChatProps> = ({ chatHistory, onSendMessage,
           </div>
         ))}
         {isLoading && (
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-3 animate-fade-in-up">
                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center">
                     <BotIcon />
                 </div>
