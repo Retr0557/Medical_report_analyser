@@ -99,13 +99,13 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen font-sans text-gray-800 dark:text-gray-200">
+    <div className="min-h-screen font-sans text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900">
       <Header onChangeApiKey={handleChangeApiKey} />
-      <main className="container mx-auto p-4 md:p-8">
+      <main className="container mx-auto px-4 py-6 md:py-8">
         {!analysisResult ? (
           <ReportInput onProcess={handleProcessReport} isLoading={isLoading} error={error} />
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6">
             <AnalysisResult result={analysisResult} onReset={handleReset} />
             <ChatComponent 
               chatHistory={chatMessages} 
