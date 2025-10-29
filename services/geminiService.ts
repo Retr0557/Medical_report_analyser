@@ -90,15 +90,39 @@ export const analyzeMedicalReport = async (
     }
 };
 
-export const startChatSession = (apiKey: string): Chat => {
+export const startChatSession = (apiKey: string, analysisResult: AnalysisPayload): Chat => {
     if (!apiKey) throw new Error("API Key is required.");
     const ai = new GoogleGenAI({ apiKey });
+    
+    const formattedParameters = analysisResult.parameters.map(p => 
+        `- ${p.parameter}: ${p.value ?? 'N/A'} ${p.unit ?? ''} (Reference Range: ${p.referenceRange ?? 'N/A'})`
+    ).join('\n');
+
+    const baseSystemInstruction = `You are a helpful assistant providing general medical information. The user has just had a medical report analyzed. Your primary goal is to answer questions about the extracted parameters using the data provided below as context.
+
+RULES:
+1.  When asked about a specific parameter (e.g., "What is Hemoglobin?"), provide a general explanation of what that parameter is and its function in the body.
+2.  You can reference the user's specific value from their report if they ask about it, but you MUST NOT interpret it. For example, you can say "Your report shows a Hemoglobin value of 14 g/dL."
+3.  You MUST NEVER give personalized medical advice, a diagnosis, or an opinion on whether their results are "good" or "bad".
+4.  If the user asks for interpretation, advice, or a diagnosis, you MUST politely decline and strongly recommend they consult with a qualified healthcare professional.
+5.  Keep your answers concise and easy to understand for a layperson.`;
+    
+    const reportContext = `
+--- USER'S REPORT CONTEXT ---
+Summary: ${analysisResult.summary}
+
+Parameters:
+${formattedParameters}
+---
+`;
+
+    const fullSystemInstruction = `${baseSystemInstruction}\n\n${reportContext}`;
     
     const model = 'gemini-2.5-flash';
     return ai.chats.create({
         model,
         config: {
-            systemInstruction: 'You are a helpful assistant providing general medical information. The user has just had a medical report analyzed. You can answer general questions, but you MUST NOT provide personalized medical advice or interpret their specific results. If asked to interpret their results, politely decline and suggest they speak with a healthcare professional.',
+            systemInstruction: fullSystemInstruction,
         },
     });
 };

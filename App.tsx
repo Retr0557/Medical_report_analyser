@@ -60,9 +60,9 @@ const App: React.FC = () => {
       const result = await analyzeMedicalReport(file, apiKey);
       setAnalysisResult(result);
       
-      chatRef.current = startChatSession(apiKey);
+      chatRef.current = startChatSession(apiKey, result);
       setChatMessages([
-        { role: 'model', text: 'Your report has been analyzed. Feel free to ask any general medical questions. Please remember, I cannot provide medical advice.' }
+        { role: 'model', text: "Your report has been analyzed. You can now ask questions about the extracted parameters (e.g., \"What is Hemoglobin?\").\n\nPlease remember, I cannot provide medical advice. Always consult a healthcare professional for interpretation of your results." }
       ]);
 
     } catch (err) {

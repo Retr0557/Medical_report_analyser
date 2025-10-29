@@ -36,7 +36,7 @@ export const ChatComponent: React.FC<ChatProps> = ({ chatHistory, onSendMessage,
         <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300">
           Continue the Conversation
         </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Ask a general medical question.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Ask questions about your analyzed report.</p>
       </div>
 
       <div className="h-96 overflow-y-auto p-4 md:p-6 space-y-4">
@@ -80,7 +80,7 @@ export const ChatComponent: React.FC<ChatProps> = ({ chatHistory, onSendMessage,
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Type your question here..."
+            placeholder="Ask about your results, e.g., 'What is Hemoglobin?'"
             className="flex-grow p-3 border border-gray-300 rounded-full shadow-sm focus:ring-teal-500 focus:border-teal-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white transition"
             disabled={isLoading}
           />
